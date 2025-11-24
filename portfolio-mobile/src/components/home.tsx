@@ -12,15 +12,25 @@ import {
   ImageSourcePropType,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import Header from "./header";
 import SignupModal from "./signup";
 import LoginModal from "./login";
+import { loginApi, signupApi } from "../services/authApi";
+import { RootStackParamList } from "../types";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import Header from "./header";
 
 const { width, height } = Dimensions.get("window");
 
 // Update this path if your asset is located elsewhere
 const BG_IMAGE: ImageSourcePropType = require("../../assets/images/background3.png");
 // If your file is images-background.png/jpg/etc, change the path above accordingly.
+type SignupPayload = {
+  name: string;
+  email: string;
+  password: string;
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function Home() {
   const [signupVisible, setSignupVisible] = useState(false);
@@ -43,9 +53,19 @@ export default function Home() {
   function handleLogin() {
     navigation.navigate("Login");
   }
-  function handleSignup() {
-    navigation.navigate("Signup");
+  // Parent.tsx
+  async function handleSignup(payload: SignupPayload) {
+    console.log("[Parent] handleSignup payload:", payload);
+    try {
+      const data = await signupApi(payload);
+      alert("Signup successful");
+      setVisible(false);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || "Signup failed";
+      alert("Signup failed: " + msg);
+    }
   }
+
   function handleOpenSignup() {
     setSignupVisible(true);
   }
@@ -53,7 +73,6 @@ export default function Home() {
     setSignupVisible(false);
   }
 
-  // subtle background motion: slow vertical float + small scale
   const bgAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -84,24 +103,28 @@ export default function Home() {
     inputRange: [0, 1],
     outputRange: [1, 1.02], // tiny zoom in/out
   });
-  function handleModalSubmit(payload: {
+  async function handleModalSubmit(payload: {
     name: string;
     email: string;
     password: string;
   }) {
-    // handle registration API call here
-    console.log("Signup payload:", payload);
-    // For now show a simple confirmation
+    const data = await signupApi(payload);
+
     alert(`Thanks ${payload.name}! Signup submitted.`);
     setSignupVisible(false);
-    // optionally navigate somewhere:
-    // navigation.navigate("TemplateSelect", { publicUrl: "" });
   }
-  function handleLoginSubmit(payload: { email: string; password: string }) {
-    console.log("Login payload:", payload);
+  async function handleLoginSubmit(payload: {
+    email: string;
+    password: string;
+  }) {
+    const data = await loginApi(payload);
+
     // TODO: perform auth API call here
     // after successful login you can close modal and navigate:
     setLoginVisible(false);
+    console.log("nav state:", JSON.stringify(navigation.getState(), null, 2));
+
+    navigation.navigate("Form");
     // navigation.navigate('TemplateSelect') // example
   }
   return (
@@ -111,6 +134,8 @@ export default function Home() {
         title="Portfolio designer"
         onLogin={openLogin}
         onSignup={handleOpenSignup}
+        logo={undefined}
+        isLoggedIn={false}
       />
 
       {/* Background image (animated) - absolute, behind content */}
@@ -298,3 +323,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
+function setVisible(arg0: boolean) {
+  throw new Error("Function not implemented.");
+}

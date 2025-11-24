@@ -1,306 +1,5 @@
-// import React, { useState } from "react";
-// import {
-//   View,
-//   Text,
-//   ScrollView,
-//   Button,
-//   Image,
-//   TouchableOpacity,
-//   Alert,
-// } from "react-native";
-// import * as ImagePicker from "expo-image-picker";
-// import Field from "../components/field";
-// import api from "../api/api";
-// import { RootStackParamList } from "../types";
-// import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-
-// type FormScreenProps = {
-//   navigation: NativeStackNavigationProp<RootStackParamList, "Form">;
-// };
-
-// type PickedImage = {
-//   uri: string;
-//   width: number;
-//   height: number;
-//   fileName?: string;
-//   type?: string;
-// };
-
-// type Project = {
-//   title: string;
-//   description: string;
-//   image: PickedImage | null;
-// };
-// type CreatePortfolioResponse = {
-//   publicUrl: string;
-// };
-
-// export default function FormScreen({ navigation }: FormScreenProps) {
-//   const [name, setName] = useState("");
-//   const [about, setAbout] = useState("");
-//   const [qualification, setQualification] = useState("");
-//   const [experience, setExperience] = useState("");
-//   const [linkedin, setLinkedin] = useState("");
-//   const [github, setGithub] = useState("");
-//   const [profileImage, setProfileImage] = useState<PickedImage | null>(null);
-//   const [projects, setProjects] = useState<Project[]>([
-//     { title: "", description: "", image: null },
-//   ]);
-//   const [resume, setResume] = useState<PickedImage | null>(null);
-
-//   const [template, setTemplate] = useState("template1");
-
-//   const pickImage = async (onPick: (image: PickedImage) => void) => {
-//     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-//     if (!perm.granted) {
-//       Alert.alert("Permission required");
-//       return;
-//     }
-
-//     const res = await ImagePicker.launchImageLibraryAsync({
-//       quality: 0.7,
-//       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-//     });
-
-//     if (!res.canceled && res.assets?.length > 0) {
-//       const a = res.assets[0];
-
-//       const img: PickedImage = {
-//         uri: a.uri,
-//         width: a.width,
-//         height: a.height,
-//         fileName: a.fileName ?? undefined,
-//         type: a.mimeType,
-//       };
-
-//       onPick(img);
-//     }
-//   };
-
-//   const addProject = () =>
-//     setProjects((prev) => [
-//       ...prev,
-//       { title: "", description: "", image: null },
-//     ]);
-
-//   const submit = async () => {
-//     try {
-//       const fd = new FormData();
-//       fd.append("name", name);
-//       fd.append("about", about);
-//       fd.append("qualification", qualification);
-//       fd.append("experience", experience);
-//       fd.append("linkedin", linkedin);
-//       fd.append("github", github);
-//       fd.append("template", template);
-
-//       const projectsPayload = projects.map((p) => ({
-//         title: p.title,
-//         description: p.description,
-//       }));
-//       fd.append("projects", JSON.stringify(projectsPayload));
-
-//       // profile image
-//       if (profileImage) {
-//         const uriParts = profileImage.uri.split(".");
-//         const fileType = uriParts[uriParts.length - 1];
-
-//         fd.append("profileImage", {
-//           uri: profileImage.uri,
-//           name: `profile.${fileType}`,
-//           type: `image/${fileType}`,
-//         } as any);
-//       }
-
-//       // project images
-//       projects.forEach((p, idx) => {
-//         if (p.image) {
-//           const uriParts = p.image.uri.split(".");
-//           const fileType = uriParts[uriParts.length - 1];
-
-//           fd.append("projectImages", {
-//             uri: p.image.uri,
-//             name: `proj${idx}.${fileType}`,
-//             type: `image/${fileType}`,
-//           } as any);
-//         }
-//       });
-
-//       const res = await api.post<CreatePortfolioResponse>(
-//         "/api/portfolios",
-//         fd,
-//         {
-//           headers: { "Content-Type": "multipart/form-data" },
-//         }
-//       );
-
-//       const { publicUrl } = res.data;
-//       Alert.alert("Success", `Portfolio ready: ${publicUrl}`);
-//       navigation.navigate("TemplateSelect", { publicUrl });
-//     } catch (err) {
-//       console.error(err);
-//       Alert.alert("Error", "Could not create portfolio");
-//     }
-//   };
-
-//   return (
-//     <View style={{ flex: 1 }}>
-//       <ScrollView
-//         contentContainerStyle={{
-//           padding: 16,
-//           paddingBottom: 200,
-//           minHeight: "240%", // forces scroll on all screens
-//         }}
-//         keyboardShouldPersistTaps="handled"
-//         showsVerticalScrollIndicator={true}
-//       >
-//         <Field label="Name" value={name} onChangeText={setName} />
-//         <Field
-//           label="Qualification"
-//           value={qualification}
-//           onChangeText={setQualification}
-//         />
-//         <Field label="About" value={about} onChangeText={setAbout} multiline />
-//         <Field
-//           label="Experience"
-//           value={experience}
-//           onChangeText={setExperience}
-//           multiline
-//         />
-//         <Field
-//           label="LinkedIn URL"
-//           value={linkedin}
-//           onChangeText={setLinkedin}
-//         />
-//         <Field label="GitHub URL" value={github} onChangeText={setGithub} />
-
-//         <Text style={{ marginTop: 10 }}>Profile Image</Text>
-
-//         {/* FIXED callback */}
-//         <TouchableOpacity
-//           onPress={() =>
-//             pickImage((img) => {
-//               setProfileImage(img);
-//             })
-//           }
-//           style={{ marginVertical: 8 }}
-//         >
-//           <View
-//             style={{
-//               backgroundColor: "#eee",
-//               padding: 8,
-//               alignItems: "center",
-//               borderRadius: 8,
-//             }}
-//           >
-//             {profileImage ? (
-//               <Image
-//                 source={{ uri: profileImage.uri }}
-//                 style={{ width: 100, height: 100, borderRadius: 8 }}
-//               />
-//             ) : (
-//               <Text>Select image</Text>
-//             )}
-//           </View>
-//         </TouchableOpacity>
-
-//         <Text style={{ marginTop: 10, fontWeight: "600" }}>Projects</Text>
-
-//         {projects.map((p, i) => (
-//           <View key={i} style={{ marginTop: 10 }}>
-//             <Field
-//               label={`Project ${i + 1} Title`}
-//               value={p.title}
-//               onChangeText={(t: string) => {
-//                 const arr = [...projects];
-//                 arr[i].title = t;
-//                 setProjects(arr);
-//               }}
-//             />
-
-//             <Field
-//               label={`Project ${i + 1} Description`}
-//               value={p.description}
-//               onChangeText={(t: string) => {
-//                 const arr = [...projects];
-//                 arr[i].description = t;
-//                 setProjects(arr);
-//               }}
-//               multiline
-//             />
-
-//             {/* FIXED callback */}
-//             <TouchableOpacity
-//               onPress={() =>
-//                 pickImage((img) => {
-//                   const arr = [...projects];
-//                   arr[i].image = img;
-//                   setProjects(arr);
-//                 })
-//               }
-//               style={{ marginVertical: 8 }}
-//             >
-//               <View
-//                 style={{
-//                   backgroundColor: "#eee",
-//                   padding: 8,
-//                   alignItems: "center",
-//                   borderRadius: 8,
-//                 }}
-//               >
-//                 {p.image ? (
-//                   <Image
-//                     source={{ uri: p.image.uri }}
-//                     style={{ width: 120, height: 80, borderRadius: 8 }}
-//                   />
-//                 ) : (
-//                   <Text>Select image for project {i + 1}</Text>
-//                 )}
-//               </View>
-//             </TouchableOpacity>
-//           </View>
-//         ))}
-
-//         <Button title="Add Project" onPress={addProject} />
-
-//         <Text style={{ marginTop: 12 }}>Choose Template</Text>
-//         <View style={{ flexDirection: "column", gap: 8, marginTop: 8 }}>
-//           <Button
-//             title={template === "template1" ? "Template 1 ✓" : "Template 1"}
-//             onPress={() => setTemplate("template1")}
-//           />
-//           <Button
-//             title={template === "template2" ? "Template 2 ✓" : "Template 2"}
-//             onPress={() => setTemplate("template2")}
-//           />
-//           <Button
-//             title={template === "template3" ? "Template 3 ✓" : "Template 3"}
-//             onPress={() => setTemplate("template3")}
-//           />
-//           <Button
-//             title={template === "template4" ? "Template 4 ✓" : "Template 4"}
-//             onPress={() => setTemplate("template4")}
-//           />
-//           <Button
-//             title={template === "template5" ? "Template 5 ✓" : "Template 5"}
-//             onPress={() => setTemplate("template5")}
-//           />
-//         </View>
-
-//         <View style={{ marginTop: 20 }}>
-//           <Button
-//             title="Create Portfolio"
-//             onPress={() => {
-//               console.log("Create Portfolio button pressed");
-//               submit();
-//             }}
-//           />
-//         </View>
-//       </ScrollView>
-//     </View>
-//   );
-// }
-import React, { useState } from "react";
+// src/screens/FormScreen.tsx
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -309,13 +8,16 @@ import {
   Image,
   TouchableOpacity,
   Alert,
+  StyleSheet,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Field from "../components/field";
 import api from "../api/api";
 import { RootStackParamList } from "../types";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import Header from "../components/header";
 
 type FormScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, "Form">;
@@ -333,13 +35,18 @@ type Project = {
   title: string;
   description: string;
   image: PickedFile | null;
+  github?: string;
+  live?: string;
 };
 
 type CreatePortfolioResponse = {
   publicUrl: string;
+  slug?: string; // optional
+  message?: string;
 };
 
 export default function FormScreen({ navigation }: FormScreenProps) {
+  // basic profile fields
   const [name, setName] = useState("");
   const [about, setAbout] = useState("");
   const [qualification, setQualification] = useState("");
@@ -347,72 +54,147 @@ export default function FormScreen({ navigation }: FormScreenProps) {
   const [linkedin, setLinkedin] = useState("");
   const [github, setGithub] = useState("");
 
+  // uploads
   const [profileImage, setProfileImage] = useState<PickedFile | null>(null);
   const [resume, setResume] = useState<PickedFile | null>(null);
 
+  // projects
   const [projects, setProjects] = useState<Project[]>([
-    { title: "", description: "", image: null },
+    { title: "", description: "", image: null, github: "", live: "" },
   ]);
 
   const [template, setTemplate] = useState("template1");
 
-  // ---------------------------------------------------------
-  // GENERIC PICKER (image/pdf)
-  // ---------------------------------------------------------
-  // pick image or PDF
+  // new fields that align with template1.ejs
+  const [interestsInput, setInterestsInput] = useState(""); // comma-separated
+  const [skillsInput, setSkillsInput] = useState(""); // comma-separated
+  const [contactsInput, setContactsInput] = useState(""); // comma-separated
+  const [quote, setQuote] = useState("");
+  const [role, setRole] = useState("");
+  const [footer, setFooter] = useState("");
+  const [logoUrlInput, setLogoUrlInput] = useState(""); // optional remote logo url
+
+  // auth / header state
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userName, setUserName] = useState<string | undefined>(undefined);
+
+  // On mount, check token + stored name
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem("authToken");
+        const storedName = await AsyncStorage.getItem("userName");
+        setIsLoggedIn(!!token);
+        if (storedName) setUserName(storedName);
+      } catch (e) {
+        console.warn("Auth check failed", e);
+      }
+    })();
+  }, []);
+
+  /**
+   * pickFile:
+   * - when allowPDF === true, uses DocumentPicker.getDocumentAsync and narrows using runtime check `result.type === 'success'`.
+   * - otherwise it uses expo-image-picker.
+   *
+   * We use lightweight casts only to read optional fields (name/mimeType) so this works across Expo versions.
+   */
   const pickFile = async (
     onPick: (file: PickedFile) => void,
     allowPDF = false
   ) => {
+    // ---------- RESUME: Document Picker ----------
     if (allowPDF) {
-      // ---- PICK PDF ----
       const result = await DocumentPicker.getDocumentAsync({
         type: ["application/pdf", "image/*"],
         copyToCacheDirectory: true,
       });
 
-      if (!result.canceled) {
-        const file = result.assets[0];
+      if (!result.canceled && result.assets?.length > 0) {
+        const asset = result.assets[0];
+
         onPick({
-          uri: file.uri,
-          fileName: file.name,
-          type: file.mimeType,
+          uri: asset.uri,
+          fileName: asset.name ?? "file",
+          type: asset.mimeType ?? "application/pdf",
         });
       }
-    } else {
-      // ---- PICK IMAGE ----
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert("Permission required");
-        return;
-      }
+      return;
+    }
 
-      const res = await ImagePicker.launchImageLibraryAsync({
-        quality: 0.7,
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    // ---------- IMAGE PICKER (Profile & Project images) ----------
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permission required", "We need access to your gallery.");
+      return;
+    }
+
+    const imgResult = await ImagePicker.launchImageLibraryAsync({
+      quality: 0.8,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    });
+
+    if (!imgResult.canceled && imgResult.assets?.length > 0) {
+      const asset = imgResult.assets[0];
+
+      onPick({
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
+        fileName: (asset as any).fileName ?? "image.jpg",
+        type: asset.mimeType ?? "image/jpeg",
       });
-
-      if (!res.canceled && res.assets?.length > 0) {
-        const a = res.assets[0];
-
-        const img: PickedFile = {
-          uri: a.uri,
-          width: a.width,
-          height: a.height,
-          fileName: a.fileName ?? undefined,
-          type: a.mimeType,
-        };
-
-        onPick(img);
-      }
     }
   };
 
-  // ---------------------------------------------------------
-  // SUBMIT HANDLER
-  // ---------------------------------------------------------
+  const addProject = () => {
+    setProjects((prev) => [
+      ...prev,
+      { title: "", description: "", image: null, github: "", live: "" },
+    ]);
+  };
+
+  // header callbacks
+  function handleLogin() {
+    navigation.navigate("Login");
+  }
+  function handleSignup() {
+    navigation.navigate("Login");
+  }
+  function handleProfile() {
+    navigation.navigate("Form");
+  }
+  async function handleLogout() {
+    try {
+      await AsyncStorage.removeItem("authToken");
+      await AsyncStorage.removeItem("userName");
+      await AsyncStorage.removeItem("userEmail");
+      setIsLoggedIn(false);
+      setUserName(undefined);
+      navigation.reset({ index: 0, routes: [{ name: "Home" }] });
+    } catch (err) {
+      console.error("Logout failed", err);
+      Alert.alert("Error", "Could not logout. Try again.");
+    }
+  }
+
+  // submit handler
   const submit = async () => {
     try {
+      // parse comma-separated inputs into arrays
+      const parsedInterests = interestsInput
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const parsedSkills = skillsInput
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const parsedContacts = contactsInput
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
       const fd = new FormData();
       fd.append("name", name);
       fd.append("about", about);
@@ -421,27 +203,46 @@ export default function FormScreen({ navigation }: FormScreenProps) {
       fd.append("linkedin", linkedin);
       fd.append("github", github);
       fd.append("template", template);
-      fd.append("email", email);
 
+      // new template-specific fields
+      fd.append("interests", JSON.stringify(parsedInterests));
+      fd.append("skills", JSON.stringify(parsedSkills));
+      fd.append("contacts", JSON.stringify(parsedContacts));
+      fd.append("role", role);
+      fd.append("quote", quote);
+      fd.append("footer", footer);
+
+      // logoUrl: use typed input or fallback dev local path (uploaded file)
+      const logoToSend =
+        logoUrlInput.trim() || "/mnt/data/Screenshot 2025-11-24 171811.png";
+      fd.append("logoUrl", logoToSend);
+
+      // include user's email from storage if available
+      const userEmail = await AsyncStorage.getItem("userEmail");
+      if (userEmail) fd.append("email", userEmail);
+
+      // projects metadata (title/description/github/live)
       const projectsPayload = projects.map((p) => ({
         title: p.title,
         description: p.description,
+        github: p.github || "",
+        live: p.live || "",
       }));
       fd.append("projects", JSON.stringify(projectsPayload));
 
-      // PROFILE IMAGE UPLOAD
+      // profile image file (React Native FormData requires objects shaped like this)
       if (profileImage) {
-        const ext = profileImage.uri.split(".").pop();
+        const ext = profileImage.uri.split(".").pop() ?? "jpg";
         fd.append("profileImage", {
           uri: profileImage.uri,
-          name: `profile.${ext}`,
+          name: profileImage.fileName || `profile.${ext}`,
           type: profileImage.type || `image/${ext}`,
         } as any);
       }
 
-      // RESUME UPLOAD (PDF OR IMAGE)
+      // resume file
       if (resume) {
-        const ext = resume.uri.split(".").pop();
+        const ext = resume.fileName?.split(".").pop() ?? "pdf";
         fd.append("resume", {
           uri: resume.uri,
           name: resume.fileName || `resume.${ext}`,
@@ -449,46 +250,73 @@ export default function FormScreen({ navigation }: FormScreenProps) {
         } as any);
       }
 
-      // PROJECT IMAGES UPLOAD
+      // project images (mapped by index on server)
       projects.forEach((p, idx) => {
         if (p.image) {
-          const ext = p.image.uri.split(".").pop();
+          const ext = p.image.uri.split(".").pop() ?? "jpg";
           fd.append("projectImages", {
             uri: p.image.uri,
-            name: `proj_${idx}.${ext}`,
+            name: p.image.fileName || `proj_${idx}.${ext}`,
             type: p.image.type || `image/${ext}`,
           } as any);
         }
       });
 
+      // headers (do not set Content-Type explicitly)
+      const token = await AsyncStorage.getItem("authToken");
+      const headers: Record<string, unknown> = {};
+
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      headers["Content-Type"] = "multipart/form-data";
+
       const res = await api.post<CreatePortfolioResponse>(
         "/api/portfolios",
         fd,
         {
-          headers: { "Content-Type": "multipart/form-data" },
+          headers,
         }
       );
 
       const { publicUrl } = res.data;
       Alert.alert("Success", `Portfolio ready: ${publicUrl}`);
       navigation.navigate("TemplateSelect", { publicUrl });
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Could not create portfolio");
+    } catch (err: any) {
+      console.error("Submit error:", err);
+      if (err?.response) {
+        console.error("Server response status:", err.response.status);
+        console.error("Server response data:", err.response.data);
+        Alert.alert(
+          "Server error",
+          `${err.response.status}: ${JSON.stringify(err.response.data)}`
+        );
+      } else {
+        Alert.alert("Error", "Could not create portfolio");
+      }
     }
   };
-  const addProject = () => {
-    setProjects((prev) => [
-      ...prev,
-      { title: "", description: "", image: null },
-    ]);
-  };
 
-  // ---------------------------------------------------------
+  // a simple dev logo object that can be shown in the header
+  const uploadedLogo = { uri: "/mnt/data/Screenshot 2025-11-24 171811.png" };
+
+  // -----------------------
   // UI
-  // ---------------------------------------------------------
+  // -----------------------
   return (
     <View style={{ flex: 1 }}>
+      <Header
+        logo={uploadedLogo}
+        title="Create Portfolio"
+        isLoggedIn={isLoggedIn}
+        userName={userName}
+        onLogin={handleLogin}
+        onSignup={handleSignup}
+        onProfile={handleProfile}
+        onLogout={handleLogout}
+      />
+
       <ScrollView
         contentContainerStyle={{
           padding: 16,
@@ -513,13 +341,50 @@ export default function FormScreen({ navigation }: FormScreenProps) {
           multiline
         />
         <Field
+          label="Role (e.g. Fullstack Developer)"
+          value={role}
+          onChangeText={setRole}
+        />
+        <Field label="Quote" value={quote} onChangeText={setQuote} multiline />
+
+        {/* Interests / Skills / Contacts inputs (comma separated) */}
+        <Field
+          label="Interests (comma separated)"
+          value={interestsInput}
+          onChangeText={setInterestsInput}
+        />
+        <Field
+          label="Skills (comma separated)"
+          value={skillsInput}
+          onChangeText={setSkillsInput}
+        />
+        <Field
+          label="Contact links (comma separated)"
+          value={contactsInput}
+          onChangeText={setContactsInput}
+        />
+
+        <Field
+          label="Footer text"
+          value={footer}
+          onChangeText={setFooter}
+          multiline
+        />
+
+        <Field
+          label="Logo URL (optional)"
+          value={logoUrlInput}
+          onChangeText={setLogoUrlInput}
+        />
+
+        <Field
           label="LinkedIn URL"
           value={linkedin}
           onChangeText={setLinkedin}
         />
         <Field label="GitHub URL" value={github} onChangeText={setGithub} />
 
-        {/* PROFILE IMAGE */}
+        {/* Profile Image */}
         <Text style={{ marginTop: 10 }}>Profile Image</Text>
         <TouchableOpacity
           onPress={() =>
@@ -529,14 +394,7 @@ export default function FormScreen({ navigation }: FormScreenProps) {
           }
           style={{ marginVertical: 8 }}
         >
-          <View
-            style={{
-              backgroundColor: "#eee",
-              padding: 8,
-              alignItems: "center",
-              borderRadius: 8,
-            }}
-          >
+          <View style={styles.uploadBox}>
             {profileImage ? (
               <Image
                 source={{ uri: profileImage.uri }}
@@ -548,7 +406,7 @@ export default function FormScreen({ navigation }: FormScreenProps) {
           </View>
         </TouchableOpacity>
 
-        {/* RESUME UPLOAD */}
+        {/* Resume */}
         <Text style={{ marginTop: 10 }}>Resume (PDF or Image)</Text>
         <TouchableOpacity
           onPress={() =>
@@ -558,14 +416,7 @@ export default function FormScreen({ navigation }: FormScreenProps) {
           }
           style={{ marginVertical: 8 }}
         >
-          <View
-            style={{
-              backgroundColor: "#eee",
-              padding: 12,
-              borderRadius: 8,
-              alignItems: "center",
-            }}
-          >
+          <View style={styles.uploadBox}>
             {resume ? (
               <Text>{resume.fileName || "Resume Selected"}</Text>
             ) : (
@@ -574,9 +425,8 @@ export default function FormScreen({ navigation }: FormScreenProps) {
           </View>
         </TouchableOpacity>
 
-        {/* PROJECTS */}
+        {/* Projects */}
         <Text style={{ marginTop: 10, fontWeight: "600" }}>Projects</Text>
-
         {projects.map((p, i) => (
           <View key={i} style={{ marginTop: 10 }}>
             <Field
@@ -600,6 +450,26 @@ export default function FormScreen({ navigation }: FormScreenProps) {
               multiline
             />
 
+            <Field
+              label={`Project ${i + 1} GitHub URL`}
+              value={p.github || ""}
+              onChangeText={(t) => {
+                const arr = [...projects];
+                arr[i].github = t;
+                setProjects(arr);
+              }}
+            />
+
+            <Field
+              label={`Project ${i + 1} Live URL`}
+              value={p.live || ""}
+              onChangeText={(t) => {
+                const arr = [...projects];
+                arr[i].live = t;
+                setProjects(arr);
+              }}
+            />
+
             <TouchableOpacity
               onPress={() =>
                 pickFile((img) => {
@@ -610,14 +480,7 @@ export default function FormScreen({ navigation }: FormScreenProps) {
               }
               style={{ marginVertical: 8 }}
             >
-              <View
-                style={{
-                  backgroundColor: "#eee",
-                  padding: 8,
-                  alignItems: "center",
-                  borderRadius: 8,
-                }}
-              >
+              <View style={styles.uploadBox}>
                 {p.image ? (
                   <Image
                     source={{ uri: p.image.uri }}
@@ -631,9 +494,11 @@ export default function FormScreen({ navigation }: FormScreenProps) {
           </View>
         ))}
 
-        <Button title="Add Project" onPress={addProject} />
+        <View style={{ marginTop: 8 }}>
+          <Button title="Add Project" onPress={addProject} />
+        </View>
 
-        {/* TEMPLATE SELECT */}
+        {/* Templates */}
         <Text style={{ marginTop: 12 }}>Choose Template</Text>
         <View style={{ flexDirection: "column", gap: 8, marginTop: 8 }}>
           {[
@@ -651,7 +516,7 @@ export default function FormScreen({ navigation }: FormScreenProps) {
           ))}
         </View>
 
-        {/* SUBMIT */}
+        {/* Submit */}
         <View style={{ marginTop: 20 }}>
           <Button
             title="Create Portfolio"
@@ -661,7 +526,18 @@ export default function FormScreen({ navigation }: FormScreenProps) {
             }}
           />
         </View>
+
+        <View style={{ height: 120 }} />
       </ScrollView>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  uploadBox: {
+    backgroundColor: "#eee",
+    padding: 8,
+    alignItems: "center",
+    borderRadius: 8,
+  },
+});

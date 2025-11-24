@@ -36,7 +36,6 @@ export default function SignupModal({ visible, onClose, onSubmit }: Props) {
       return;
     }
     onSubmit({ name: name.trim(), email: email.trim(), password });
-    // keep fields or reset as needed — here we reset after submit
     setName("");
     setEmail("");
     setPassword("");
@@ -50,7 +49,6 @@ export default function SignupModal({ visible, onClose, onSubmit }: Props) {
       transparent
       onRequestClose={onClose}
     >
-      {/* dim overlay */}
       <View style={styles.overlay} />
 
       <KeyboardAvoidingView
@@ -124,7 +122,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    top: 68, // matches header area — keeps header visible
+    top: 68,
     bottom: 0,
     backgroundColor: "#071133",
     opacity: 0.6,

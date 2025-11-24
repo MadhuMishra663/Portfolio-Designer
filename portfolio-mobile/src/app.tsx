@@ -19,7 +19,11 @@ export default function App() {
           component={Home}
           options={{ headerShown: false }}
         />
-        <Stack.Screen name="Form" component={FormScreen} />
+        <Stack.Screen
+          name="Form"
+          component={FormScreen}
+          options={{ headerShown: false }}
+        />
         <Stack.Screen name="TemplateSelect" component={TemplateSelectScreen} />
       </Stack.Navigator>
     </NavigationContainer>
