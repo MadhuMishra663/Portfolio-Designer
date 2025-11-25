@@ -18,6 +18,7 @@ import api from "../api/api";
 import { RootStackParamList } from "../types";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import Header from "../components/header";
+import { File } from "expo-file-system";
 
 type FormScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, "Form">;
@@ -29,6 +30,7 @@ type PickedFile = {
   height?: number;
   fileName?: string;
   type?: string;
+  name?: string;
 };
 
 type Project = {
@@ -91,6 +93,29 @@ export default function FormScreen({ navigation }: FormScreenProps) {
       }
     })();
   }, []);
+  async function convertBlobToRealFile(
+    blobUri: string,
+    fileName: string,
+    mimeType: string
+  ) {
+    const response = await fetch(blobUri);
+    const blob = await response.blob();
+
+    // Create local file path
+    const fileReader = new FileReader();
+
+    return new Promise<any>((resolve) => {
+      fileReader.onloadend = () => {
+        resolve({
+          uri: fileReader.result as string, // valid file path for RN
+          name: fileName,
+          type: mimeType,
+        });
+      };
+
+      fileReader.readAsDataURL(blob); // converts blob → base64 → RN File
+    });
+  }
 
   /**
    * pickFile:
@@ -113,11 +138,16 @@ export default function FormScreen({ navigation }: FormScreenProps) {
       if (!result.canceled && result.assets?.length > 0) {
         const asset = result.assets[0];
 
-        onPick({
-          uri: asset.uri,
-          fileName: asset.name ?? "file",
-          type: asset.mimeType ?? "application/pdf",
-        });
+        // Convert blob URI → real file
+        const fixedFile = await convertBlobToRealFile(
+          asset.uri,
+          asset.name ?? "resume.pdf",
+          asset.mimeType ?? "application/pdf"
+        );
+
+        console.log("🔥 FIXED RESUME FILE", fixedFile);
+
+        onPick(fixedFile);
       }
       return;
     }
@@ -177,10 +207,13 @@ export default function FormScreen({ navigation }: FormScreenProps) {
       Alert.alert("Error", "Could not logout. Try again.");
     }
   }
+  // src/screens/FormScreen.tsx
 
   // submit handler
   const submit = async () => {
     try {
+      console.log("RESUME FILE BEING SENT:", resume);
+
       // parse comma-separated inputs into arrays
       const parsedInterests = interestsInput
         .split(",")
@@ -242,11 +275,25 @@ export default function FormScreen({ navigation }: FormScreenProps) {
 
       // resume file
       if (resume) {
-        const ext = resume.fileName?.split(".").pop() ?? "pdf";
+        let uri = resume.uri;
+
+        // ensure file name exists
+        let fileName = resume.fileName;
+        if (!fileName) {
+          fileName = uri.split("/").pop() || "resume.pdf";
+        }
+
+        // ensure type exists
+        let type = resume.type;
+        if (!type) {
+          const ext = fileName.split(".").pop();
+          type = ext === "pdf" ? "application/pdf" : "application/octet-stream";
+        }
+
         fd.append("resume", {
-          uri: resume.uri,
-          name: resume.fileName || `resume.${ext}`,
-          type: resume.type || "application/pdf",
+          uri,
+          name: fileName,
+          type,
         } as any);
       }
 
@@ -409,11 +456,29 @@ export default function FormScreen({ navigation }: FormScreenProps) {
         {/* Resume */}
         <Text style={{ marginTop: 10 }}>Resume (PDF or Image)</Text>
         <TouchableOpacity
-          onPress={() =>
-            pickFile((file) => {
-              setResume(file);
-            }, true)
-          }
+          onPress={async () => {
+            pickFile(async (file) => {
+              console.log("RESUME PICK RESULT:", file); // debug
+
+              let fixedFile = file;
+
+              // Convert BLOB URI
+              if (file.uri.startsWith("blob:")) {
+                const response = await fetch(file.uri);
+                const blob = await response.blob();
+
+                fixedFile = {
+                  uri: file.uri,
+                  name: file.fileName || "resume.pdf",
+                  type: blob.type || "application/pdf",
+                };
+
+                console.log("🔥 FIXED RESUME FILE:", fixedFile);
+              }
+
+              setResume(fixedFile);
+            }, true);
+          }}
           style={{ marginVertical: 8 }}
         >
           <View style={styles.uploadBox}>
