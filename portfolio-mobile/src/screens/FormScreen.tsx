@@ -18,8 +18,10 @@ import api from "../api/api";
 import { RootStackParamList } from "../types";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import Header from "../components/header";
-import { File } from "expo-file-system";
-
+import { Paths, Directory } from "expo-file-system";
+import { decode as decodeBase64 } from "base64-arraybuffer";
+import { Platform } from "react-native";
+import * as FileSystem from "expo-file-system";
 type FormScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, "Form">;
 };
@@ -73,7 +75,7 @@ export default function FormScreen({ navigation }: FormScreenProps) {
   const [contactsInput, setContactsInput] = useState(""); // comma-separated
   const [quote, setQuote] = useState("");
   const [role, setRole] = useState("");
-  const [footer, setFooter] = useState("");
+
   const [logoUrlInput, setLogoUrlInput] = useState(""); // optional remote logo url
 
   // auth / header state
@@ -93,28 +95,56 @@ export default function FormScreen({ navigation }: FormScreenProps) {
       }
     })();
   }, []);
-  async function convertBlobToRealFile(
-    blobUri: string,
-    fileName: string,
-    mimeType: string
-  ) {
+
+  // helper: fetch blobUri → data:... base64 string (used on native)
+  async function blobToBase64(blobUri: string) {
     const response = await fetch(blobUri);
     const blob = await response.blob();
 
-    // Create local file path
-    const fileReader = new FileReader();
-
-    return new Promise<any>((resolve) => {
-      fileReader.onloadend = () => {
-        resolve({
-          uri: fileReader.result as string, // valid file path for RN
-          name: fileName,
-          type: mimeType,
-        });
-      };
-
-      fileReader.readAsDataURL(blob); // converts blob → base64 → RN File
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob); // blob → data:<mime>;base64,...
     });
+  }
+
+  /**
+   * convertBlobToRealFile
+   * - On web: returns a File object (in memory) — append that to FormData.
+   * - On native: writes to FileSystem.cacheDirectory and returns { uri, name, type }.
+   */
+  async function convertBlobToRealFile(
+    blobUri: string,
+    fileName: string,
+    mimeType = "application/pdf"
+  ) {
+    // ---------- WEB ----------
+    if (Platform.OS === "web") {
+      // fetch the blob and create a File object
+      const resp = await fetch(blobUri);
+      const blob = await resp.blob();
+      const file = new File([blob], fileName, { type: mimeType });
+      // return file directly so submit() can append it
+      return { webFile: file, uri: blobUri, name: fileName, type: mimeType };
+    }
+
+    // ---------- NATIVE (iOS / Android / Expo) ----------
+    // Use legacy write if needed — the modern API may also work depending on SDK.
+    // We'll use FileSystem.writeAsStringAsync with Base64 encoding.
+    const base64 = await blobToBase64(blobUri);
+    const fileUri = (FileSystem as any).cacheDirectory + fileName;
+
+    // On some Expo SDKs EncodingType is available; fall back to string if not.
+    const encoding = (FileSystem as any).EncodingType?.Base64 ?? "base64";
+
+    await (FileSystem as any).writeAsStringAsync(
+      fileUri,
+      base64.replace(/^data:.*;base64,/, ""),
+      { encoding }
+    );
+
+    return { uri: fileUri, name: fileName, type: mimeType };
   }
 
   /**
@@ -135,25 +165,47 @@ export default function FormScreen({ navigation }: FormScreenProps) {
         copyToCacheDirectory: true,
       });
 
-      if (!result.canceled && result.assets?.length > 0) {
-        const asset = result.assets[0];
+      // support both old/new shapes: result.type === 'success' or result.canceled + result.assets (some SDKs)
+      const gotAsset =
+        (result as any).type === "success"
+          ? (result as any)
+          : // older shape: result.canceled && result.assets
+            (result as any).assets?.length > 0
+            ? (result as any).assets[0]
+            : null;
 
-        // Convert blob URI → real file
-        const fixedFile = await convertBlobToRealFile(
-          asset.uri,
-          asset.name ?? "resume.pdf",
-          asset.mimeType ?? "application/pdf"
-        );
+      if (!gotAsset) {
+        return;
+      }
 
-        console.log("🔥 FIXED RESUME FILE", fixedFile);
+      const asset: any = gotAsset;
+      const fileName = asset.name ?? "resume.pdf";
+      const mimeType = asset.mimeType ?? "application/pdf";
 
-        onPick(fixedFile);
+      const fixed = await convertBlobToRealFile(asset.uri, fileName, mimeType);
+
+      // For web, fixed.webFile exists. For native, fixed.uri is a file:// path.
+      if ((fixed as any).webFile) {
+        onPick({
+          uri: asset.uri,
+          fileName,
+          type: mimeType,
+          webFile: (fixed as any).webFile,
+        } as PickedFile & { webFile?: File });
+      } else {
+        onPick({
+          uri: (fixed as any).uri,
+          fileName,
+          type: mimeType,
+        } as PickedFile);
       }
       return;
     }
 
     // ---------- IMAGE PICKER (Profile & Project images) ----------
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    console.log("DEBUG image library permission:", perm);
+
     if (!perm.granted) {
       Alert.alert("Permission required", "We need access to your gallery.");
       return;
@@ -164,17 +216,39 @@ export default function FormScreen({ navigation }: FormScreenProps) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
     });
 
-    if (!imgResult.canceled && imgResult.assets?.length > 0) {
-      const asset = imgResult.assets[0];
+    console.log("DEBUG ImagePicker result:", imgResult);
 
+    // If cancelled or no assets — stop
+    if (imgResult.canceled || !imgResult.assets?.length) return;
+
+    const asset = imgResult.assets[0] as any;
+    const fileName = asset.fileName ?? `image_${Date.now()}.jpg`;
+    const mimeType = asset.mimeType ?? asset.type ?? "image/jpeg";
+
+    if (Platform.OS === "web") {
+      // create a real File object on web (important)
+      const resp = await fetch(asset.uri);
+      const blob = await resp.blob();
+      const webFile = new File([blob], fileName, { type: mimeType });
       onPick({
         uri: asset.uri,
         width: asset.width,
         height: asset.height,
-        fileName: (asset as any).fileName ?? "image.jpg",
-        type: asset.mimeType ?? "image/jpeg",
-      });
+        fileName,
+        type: mimeType,
+        webFile, // important for submit()
+      } as PickedFile & { webFile?: File });
+      return;
     }
+
+    // Native: return the uri-based object
+    onPick({
+      uri: asset.uri,
+      width: asset.width,
+      height: asset.height,
+      fileName,
+      type: mimeType,
+    } as PickedFile);
   };
 
   const addProject = () => {
@@ -212,8 +286,6 @@ export default function FormScreen({ navigation }: FormScreenProps) {
   // submit handler
   const submit = async () => {
     try {
-      console.log("RESUME FILE BEING SENT:", resume);
-
       // parse comma-separated inputs into arrays
       const parsedInterests = interestsInput
         .split(",")
@@ -243,7 +315,6 @@ export default function FormScreen({ navigation }: FormScreenProps) {
       fd.append("contacts", JSON.stringify(parsedContacts));
       fd.append("role", role);
       fd.append("quote", quote);
-      fd.append("footer", footer);
 
       // logoUrl: use typed input or fallback dev local path (uploaded file)
       const logoToSend =
@@ -263,38 +334,72 @@ export default function FormScreen({ navigation }: FormScreenProps) {
       }));
       fd.append("projects", JSON.stringify(projectsPayload));
 
-      // profile image file (React Native FormData requires objects shaped like this)
       if (profileImage) {
-        const ext = profileImage.uri.split(".").pop() ?? "jpg";
-        fd.append("profileImage", {
-          uri: profileImage.uri,
-          name: profileImage.fileName || `profile.${ext}`,
-          type: profileImage.type || `image/${ext}`,
-        } as any);
+        const webFile = (profileImage as any).webFile as File | undefined;
+        if (webFile && Platform.OS === "web") {
+          fd.append(
+            "profileImage",
+            webFile,
+            profileImage.fileName ?? webFile.name
+          );
+        } else {
+          // native (iOS/Android) uses { uri, name, type } object expected by RN FormData
+          const ext =
+            profileImage.fileName?.split(".").pop() ??
+            profileImage.uri.split(".").pop() ??
+            "jpg";
+          fd.append("profileImage", {
+            uri: profileImage.uri,
+            name: profileImage.fileName ?? `profile.${ext}`,
+            type: profileImage.type ?? `image/${ext}`,
+          } as any);
+        }
       }
 
-      // resume file
+      projects.forEach((p, idx) => {
+        if (!p.image) return;
+        const webFile = (p.image as any).webFile as File | undefined;
+        if (webFile && Platform.OS === "web") {
+          // append the real File object (browser)
+          fd.append("projectImages", webFile, p.image.fileName ?? webFile.name);
+        } else {
+          // native: pass RN file object
+          const ext =
+            p.image.fileName?.split(".").pop() ??
+            p.image.uri.split(".").pop() ??
+            "jpg";
+          fd.append("projectImages", {
+            uri: p.image.uri,
+            name: p.image.fileName ?? `proj_${idx}.${ext}`,
+            type: p.image.type ?? `image/${ext}`,
+          } as any);
+        }
+      });
+
+      // inside submit(), replace resume append section with this:
       if (resume) {
-        let uri = resume.uri;
+        // If web: we stored a File object on resume.webFile
+        const webFile = (resume as any).webFile as File | undefined;
 
-        // ensure file name exists
-        let fileName = resume.fileName;
-        if (!fileName) {
-          fileName = uri.split("/").pop() || "resume.pdf";
+        if (webFile && Platform.OS === "web") {
+          // append the actual File object (browser-friendly)
+          fd.append("resume", webFile, resume.fileName ?? webFile.name);
+        } else {
+          // native path (file://...) — append object expected by React Native FormData
+          const fileName =
+            resume.fileName ?? resume.uri.split("/").pop() ?? "resume.pdf";
+          const mime =
+            resume.type ??
+            (fileName.split(".").pop() === "pdf"
+              ? "application/pdf"
+              : "application/octet-stream");
+
+          fd.append("resume", {
+            uri: resume.uri,
+            name: fileName,
+            type: mime,
+          } as any);
         }
-
-        // ensure type exists
-        let type = resume.type;
-        if (!type) {
-          const ext = fileName.split(".").pop();
-          type = ext === "pdf" ? "application/pdf" : "application/octet-stream";
-        }
-
-        fd.append("resume", {
-          uri,
-          name: fileName,
-          type,
-        } as any);
       }
 
       // project images (mapped by index on server)
@@ -317,7 +422,7 @@ export default function FormScreen({ navigation }: FormScreenProps) {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      headers["Content-Type"] = "multipart/form-data";
+      // headers["Content-Type"] = "multipart/form-data";
 
       const res = await api.post<CreatePortfolioResponse>(
         "/api/portfolios",
@@ -393,7 +498,6 @@ export default function FormScreen({ navigation }: FormScreenProps) {
           onChangeText={setRole}
         />
         <Field label="Quote" value={quote} onChangeText={setQuote} multiline />
-
         {/* Interests / Skills / Contacts inputs (comma separated) */}
         <Field
           label="Interests (comma separated)"
@@ -412,25 +516,16 @@ export default function FormScreen({ navigation }: FormScreenProps) {
         />
 
         <Field
-          label="Footer text"
-          value={footer}
-          onChangeText={setFooter}
-          multiline
-        />
-
-        <Field
           label="Logo URL (optional)"
           value={logoUrlInput}
           onChangeText={setLogoUrlInput}
         />
-
         <Field
           label="LinkedIn URL"
           value={linkedin}
           onChangeText={setLinkedin}
         />
         <Field label="GitHub URL" value={github} onChangeText={setGithub} />
-
         {/* Profile Image */}
         <Text style={{ marginTop: 10 }}>Profile Image</Text>
         <TouchableOpacity
@@ -452,34 +547,23 @@ export default function FormScreen({ navigation }: FormScreenProps) {
             )}
           </View>
         </TouchableOpacity>
-
         {/* Resume */}
         <Text style={{ marginTop: 10 }}>Resume (PDF or Image)</Text>
         <TouchableOpacity
           onPress={async () => {
-            pickFile(async (file) => {
-              console.log("RESUME PICK RESULT:", file); // debug
-
-              let fixedFile = file;
-
-              // Convert BLOB URI
-              if (file.uri.startsWith("blob:")) {
-                const response = await fetch(file.uri);
-                const blob = await response.blob();
-
-                fixedFile = {
-                  uri: file.uri,
-                  name: file.fileName || "resume.pdf",
-                  type: blob.type || "application/pdf",
-                };
-
-                console.log("🔥 FIXED RESUME FILE:", fixedFile);
-              }
-
-              setResume(fixedFile);
+            await pickFile((file) => {
+              // pickFile will provide webFile on web, or native file object on mobile
+              setResume({
+                uri: file.uri,
+                fileName: file.fileName ?? file.name ?? "resume.pdf",
+                type: file.type ?? "application/pdf",
+                // preserve webFile if present
+                ...((file as any).webFile
+                  ? { webFile: (file as any).webFile }
+                  : {}),
+              } as PickedFile & { webFile?: File });
             }, true);
           }}
-          style={{ marginVertical: 8 }}
         >
           <View style={styles.uploadBox}>
             {resume ? (
@@ -558,11 +642,9 @@ export default function FormScreen({ navigation }: FormScreenProps) {
             </TouchableOpacity>
           </View>
         ))}
-
         <View style={{ marginTop: 8 }}>
           <Button title="Add Project" onPress={addProject} />
         </View>
-
         {/* Templates */}
         <Text style={{ marginTop: 12 }}>Choose Template</Text>
         <View style={{ flexDirection: "column", gap: 8, marginTop: 8 }}>
@@ -580,7 +662,6 @@ export default function FormScreen({ navigation }: FormScreenProps) {
             />
           ))}
         </View>
-
         {/* Submit */}
         <View style={{ marginTop: 20 }}>
           <Button
@@ -591,7 +672,6 @@ export default function FormScreen({ navigation }: FormScreenProps) {
             }}
           />
         </View>
-
         <View style={{ height: 120 }} />
       </ScrollView>
     </View>
